@@ -1,4 +1,6 @@
 import os
+
+import functools
 import pandas as pd
 import torch
 import torch.utils.data
@@ -69,6 +71,20 @@ class Epickitchens(torch.utils.data.Dataset):
                 for idx in range(self._num_clips):
                     self._video_records.append(EpicKitchensVideoRecord(tup))
                     self._spatial_temporal_idx.append(idx)
+        def compare(record_a: EpicKitchensVideoRecord, record_b: EpicKitchensVideoRecord):
+            if record_a.untrimmed_video_name < record_b.untrimmed_video_name:
+                return -1
+            elif record_a.untrimmed_video_name > record_b.untrimmed_video_name:
+                return 1
+            else:
+                if record_a.start_frame < record_b.start_frame:
+                    return -1
+                elif record_a.start_frame > record_b.start_frame:
+                    return 1
+                else:
+                    return 0
+
+        self._video_records.sort(key=functools.cmp_to_key(compare))
         assert (
                 len(self._video_records) > 0
         ), "Failed to load EPIC-KITCHENS split {} from {}".format(
@@ -147,7 +163,19 @@ class Epickitchens(torch.utils.data.Dataset):
         label = self._video_records[index].label
         frames = utils.pack_pathway_output(self.cfg, frames)
         metadata = self._video_records[index].metadata
-        return frames, label, index, metadata
+
+        current_record = self._video_records[index]
+        SEQ_LEN = 10
+        history_label_verb = torch.zeros((SEQ_LEN, self.cfg.MODEL.NUM_CLASSES[0]))
+        history_label_noun = torch.zeros((SEQ_LEN, self.cfg.MODEL.NUM_CLASSES[1]))
+        for i, cur_index in enumerate(range(index - SEQ_LEN, index)):
+            cur_record = self._video_records[cur_index]
+            if cur_record.untrimmed_video_name == current_record.untrimmed_video_name:
+                history_label_verb[i, cur_record.label['verb']] = 1
+                history_label_noun[i, cur_record.label['noun']] = 1
+        history_label = torch.cat((history_label_noun, history_label_verb), dim=1)
+
+        return frames, history_label, label, index, metadata
 
 
     def __len__(self):

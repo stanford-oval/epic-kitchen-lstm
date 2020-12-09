@@ -2,11 +2,14 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 """Train a video classification model."""
+import datetime
+import os
 
 import numpy as np
 from scipy.stats import gmean
 import pprint
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
 
 import slowfast.models.losses as losses
@@ -17,7 +20,8 @@ import slowfast.utils.logging as logging
 import slowfast.utils.metrics as metrics
 import slowfast.utils.misc as misc
 from slowfast.datasets import loader
-from slowfast.models import build_model
+from slowfast.models import build_model, SlowFast
+from slowfast.models.action_predictor import ActionPredictor
 from slowfast.utils.meters import AVAMeter, TrainMeter, ValMeter, EPICTrainMeter, EPICValMeter
 
 logger = logging.get_logger(__name__)
@@ -39,26 +43,29 @@ def train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg):
     # Enable train mode.
     model.train()
     if cfg.BN.FREEZE:
-        model.module.freeze_fn('bn_statistics')
+        model.freeze_fn('bn_statistics')
+    model.freeze_fn('all_but_last')
 
     train_meter.iter_tic()
     data_size = len(train_loader)
 
-    for cur_iter, (inputs, labels, _, meta) in enumerate(train_loader):
+    for cur_iter, (inputs_img, inputs_label, labels, _, meta) in enumerate(train_loader):
         # Transfer the data to the current GPU device.
-        if isinstance(inputs, (list,)):
-            for i in range(len(inputs)):
-                inputs[i] = inputs[i].cuda(non_blocking=True)
+        if isinstance(inputs_img, (list,)):
+            for i in range(len(inputs_img)):
+                inputs_img[i] = inputs_img[i].cuda(non_blocking=True)
         else:
-            inputs = inputs.cuda(non_blocking=True)
+            inputs_img = inputs_img.cuda(non_blocking=True)
+        inputs_label = inputs_label.cuda()
         if isinstance(labels, (dict,)):
             labels = {k: v.cuda() for k, v in labels.items()}
         else:
             labels = labels.cuda()
         for key, val in meta.items():
             if isinstance(val, (list,)):
-                for i in range(len(val)):
-                    val[i] = val[i].cuda(non_blocking=True)
+                pass
+                # for i in range(len(val)):
+                #     val[i] = val[i].cuda(non_blocking=True)
             else:
                 meta[key] = val.cuda(non_blocking=True)
 
@@ -66,13 +73,16 @@ def train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg):
         lr = optim.get_epoch_lr(cur_epoch + float(cur_iter) / data_size, cfg)
         optim.set_lr(optimizer, lr)
 
-        if cfg.DETECTION.ENABLE:
-            # Compute the predictions.
-            preds = model(inputs, meta["boxes"])
+        if not cfg.MODEL.LSTM:
+            if cfg.DETECTION.ENABLE:
+                # Compute the predictions.
+                preds = model(inputs_img, meta["boxes"])
 
+            else:
+                # Perform the forward pass.
+                preds = model(inputs_img)
         else:
-            # Perform the forward pass.
-            preds = model(inputs)
+            preds = model([inputs_img, inputs_label])
 
         if isinstance(labels, (dict,)):
             # Explicitly declare reduction to mean.
@@ -166,7 +176,7 @@ def train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg):
                     (verb_top1_acc, noun_top1_acc, action_top1_acc),
                     (verb_top5_acc, noun_top5_acc, action_top5_acc),
                     (loss_verb, loss_noun, loss),
-                    lr, inputs[0].size(0) * cfg.NUM_GPUS
+                    lr, inputs_img[0].size(0) * cfg.NUM_GPUS
                 )
             else:
                 # Compute the errors.
@@ -191,7 +201,7 @@ def train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg):
                 train_meter.iter_toc()
                 # Update and log stats.
                 train_meter.update_stats(
-                    top1_err, top5_err, loss, lr, inputs[0].size(0) * cfg.NUM_GPUS
+                    top1_err, top5_err, loss, lr, inputs_img[0].size(0) * cfg.NUM_GPUS
                 )
         train_meter.log_iter_stats(cur_epoch, cur_iter)
         train_meter.iter_tic()
@@ -216,27 +226,29 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg):
     model.eval()
     val_meter.iter_tic()
 
-    for cur_iter, (inputs, labels, _, meta) in enumerate(val_loader):
+    for cur_iter, (inputs_img, inputs_label, labels, _, meta) in enumerate(val_loader):
         # Transferthe data to the current GPU device.
-        if isinstance(inputs, (list,)):
-            for i in range(len(inputs)):
-                inputs[i] = inputs[i].cuda(non_blocking=True)
+        if isinstance(inputs_img, (list,)):
+            for i in range(len(inputs_img)):
+                inputs_img[i] = inputs_img[i].cuda(non_blocking=True)
         else:
-            inputs = inputs.cuda(non_blocking=True)
+            inputs_img = inputs_img.cuda(non_blocking=True)
+        inputs_label = inputs_label.cuda()
         if isinstance(labels, (dict,)):
             labels = {k: v.cuda() for k, v in labels.items()}
         else:
             labels = labels.cuda()
         for key, val in meta.items():
             if isinstance(val, (list,)):
-                for i in range(len(val)):
-                    val[i] = val[i].cuda(non_blocking=True)
+                pass
+                # for i in range(len(val)):
+                #     val[i] = val[i].cuda(non_blocking=True)
             else:
                 meta[key] = val.cuda(non_blocking=True)
 
         if cfg.DETECTION.ENABLE:
             # Compute the predictions.
-            preds = model(inputs, meta["boxes"])
+            preds = model(inputs_img, meta["boxes"])
 
             preds = preds.cpu()
             ori_boxes = meta["ori_boxes"].cpu()
@@ -251,7 +263,10 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg):
             # Update and log stats.
             val_meter.update_stats(preds.cpu(), ori_boxes.cpu(), metadata.cpu())
         else:
-            preds = model(inputs)
+            if cfg.MODEL.LSTM:
+                preds = model([inputs_img, inputs_label])
+            else:
+                preds = model(inputs_img)
             if isinstance(labels, (dict,)):
                 # Compute the verb accuracies.
                 verb_top1_acc, verb_top5_acc = metrics.topk_accuracies(preds[0], labels['verb'], (1, 5))
@@ -289,7 +304,7 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg):
                 val_meter.update_stats(
                     (verb_top1_acc, noun_top1_acc, action_top1_acc),
                     (verb_top5_acc, noun_top5_acc, action_top5_acc),
-                    inputs[0].size(0) * cfg.NUM_GPUS
+                    inputs_img[0].size(0) * cfg.NUM_GPUS
                 )
             else:
                 # Compute the errors.
@@ -308,7 +323,7 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg):
                 val_meter.iter_toc()
                 # Update and log stats.
                 val_meter.update_stats(
-                    top1_err, top5_err, inputs[0].size(0) * cfg.NUM_GPUS
+                    top1_err, top5_err, inputs_img[0].size(0) * cfg.NUM_GPUS
                 )
         val_meter.log_iter_stats(cur_epoch, cur_iter)
         val_meter.iter_tic()
@@ -359,12 +374,23 @@ def train(cfg):
     logger.info(pprint.pformat(cfg))
 
     # Build the video model and print model statistics.
-    model = build_model(cfg)
+    model: SlowFast = build_model(cfg)
+
+    original_cfg_model_lstm = cfg.MODEL.LSTM
+    cfg.MODEL.LSTM = False
+    non_lstm_model = build_model(cfg)
+    cu.load_checkpoint("./pretrained/SlowFast.pyth", non_lstm_model, cfg.NUM_GPUS > 1)
+    model_lstm = ActionPredictor.load_from_checkpoint("./pretrained/lstm.ckpt", cfg=cfg)
+    model.load_from_non_lstm(non_lstm_model.cuda())
+    model.load_from_lstm(model_lstm.cuda())
+    cfg.MODEL.LSTM = original_cfg_model_lstm
+
+
     if du.is_master_proc():
         misc.log_model_info(model, cfg, is_train=True)
 
     if cfg.BN.FREEZE:
-        model.module.freeze_fn('bn_parameters')
+        model.freeze_fn('bn_parameters')
 
     # Construct the optimizer.
     optimizer = optim.construct_optimizer(model, cfg)
@@ -410,14 +436,19 @@ def train(cfg):
         train_loader = loader.construct_loader(cfg, "train+val")
         val_loader = loader.construct_loader(cfg, "val")
 
+    current_datetime = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+    writer_dir = os.path.join("./runs/", current_datetime)
+
+    tb_writer = SummaryWriter(writer_dir)
+
     # Create meters.
     if cfg.DETECTION.ENABLE:
         train_meter = AVAMeter(len(train_loader), cfg, mode="train")
         val_meter = AVAMeter(len(val_loader), cfg, mode="val")
     else:
         if cfg.TRAIN.DATASET == 'epickitchens':
-            train_meter = EPICTrainMeter(len(train_loader), cfg)
-            val_meter = EPICValMeter(len(val_loader), cfg)
+            train_meter = EPICTrainMeter(tb_writer, len(train_loader), cfg)
+            val_meter = EPICValMeter(tb_writer, len(val_loader), cfg)
         else:
             train_meter = TrainMeter(len(train_loader), cfg)
             val_meter = ValMeter(len(val_loader), cfg)
@@ -429,13 +460,13 @@ def train(cfg):
         # Shuffle the dataset.
         loader.shuffle_dataset(train_loader, cur_epoch)
         # Train for one epoch.
-        train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg)
+        # train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg)
 
         # Compute precise BN stats.
-        if cfg.BN.USE_PRECISE_STATS and len(get_bn_modules(model)) > 0:
-            calculate_and_update_precise_bn(
-                train_loader, model, cfg.BN.NUM_BATCHES_PRECISE
-            )
+        # if cfg.BN.USE_PRECISE_STATS and len(get_bn_modules(model)) > 0:
+        #     calculate_and_update_precise_bn(
+        #         train_loader, model, cfg.BN.NUM_BATCHES_PRECISE
+        #     )
 
         # Save a checkpoint.
         if cu.is_checkpoint_epoch(cur_epoch, cfg.TRAIN.CHECKPOINT_PERIOD):

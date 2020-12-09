@@ -9,9 +9,11 @@ import torch.nn as nn
 import slowfast.utils.weight_init_helper as init_helper
 
 from . import head_helper, resnet_helper, stem_helper
+from .action_predictor import ActionPredictorNoPred, ActionPredictor
 from .build import MODEL_REGISTRY
 
 # Number of blocks for different stages given the model depth.
+
 _MODEL_STAGE_DEPTH = {50: (3, 4, 6, 3), 101: (3, 4, 23, 3)}
 
 # Basis of temporal kernel sizes for each of the stage.
@@ -70,6 +72,22 @@ _POOL1 = {
 }
 
 
+def _recursive_freeze(module: torch.nn.Module) -> None:
+    """Freezes the layers of a given module.
+    Args:
+        module: The module to freeze
+        train_bn: If True, leave the BatchNorm layers in training mode
+    """
+    children = list(module.children())
+    if not children:
+        for param in module.parameters():
+            param.requires_grad = False
+        module.eval()
+    else:
+        for child in children:
+            _recursive_freeze(module=child)
+
+
 class FuseFastToSlow(nn.Module):
     """
     Fuses the information from the Fast pathway to the Slow pathway. Given the
@@ -78,14 +96,14 @@ class FuseFastToSlow(nn.Module):
     """
 
     def __init__(
-        self,
-        dim_in,
-        fusion_conv_channel_ratio,
-        fusion_kernel,
-        alpha,
-        eps=1e-5,
-        bn_mmt=0.1,
-        inplace_relu=True,
+            self,
+            dim_in,
+            fusion_conv_channel_ratio,
+            fusion_kernel,
+            alpha,
+            eps=1e-5,
+            bn_mmt=0.1,
+            inplace_relu=True,
     ):
         """
         Args:
@@ -146,6 +164,7 @@ class SlowFast(nn.Module):
         super(SlowFast, self).__init__()
         self.enable_detection = cfg.DETECTION.ENABLE
         self.num_pathways = 2
+        self.lstm = cfg.MODEL.LSTM
         self._construct_network(cfg)
         init_helper.init_weights(
             self, cfg.MODEL.FC_INIT_STD, cfg.RESNET.ZERO_INIT_FINAL_BN
@@ -171,7 +190,7 @@ class SlowFast(nn.Module):
         width_per_group = cfg.RESNET.WIDTH_PER_GROUP
         dim_inner = num_groups * width_per_group
         out_dim_ratio = (
-            cfg.SLOWFAST.BETA_INV // cfg.SLOWFAST.FUSION_CONV_CHANNEL_RATIO
+                cfg.SLOWFAST.BETA_INV // cfg.SLOWFAST.FUSION_CONV_CHANNEL_RATIO
         )
 
         temp_kernel = _TEMPORAL_KERNEL_BASIS[cfg.MODEL.ARCH]
@@ -311,36 +330,60 @@ class SlowFast(nn.Module):
             dilation=cfg.RESNET.SPATIAL_DILATIONS[3],
         )
 
-        if cfg.DETECTION.ENABLE:
-            self.head = head_helper.ResNetRoIHead(
-                dim_in=[
-                    width_per_group * 32,
-                    width_per_group * 32 // cfg.SLOWFAST.BETA_INV,
-                ],
-                num_classes=cfg.MODEL.NUM_CLASSES,
-                pool_size=[
-                    [
-                        cfg.DATA.NUM_FRAMES
-                        // cfg.SLOWFAST.ALPHA
-                        // pool_size[0][0],
-                        1,
-                        1,
+        if not self.lstm:
+            if cfg.DETECTION.ENABLE:
+                self.head = head_helper.ResNetRoIHead(
+                    dim_in=[
+                        width_per_group * 32,
+                        width_per_group * 32 // cfg.SLOWFAST.BETA_INV,
                     ],
-                    [cfg.DATA.NUM_FRAMES // pool_size[1][0], 1, 1],
-                ],
-                resolution=[[cfg.DETECTION.ROI_XFORM_RESOLUTION] * 2] * 2,
-                scale_factor=[cfg.DETECTION.SPATIAL_SCALE_FACTOR] * 2,
-                dropout_rate=cfg.MODEL.DROPOUT_RATE,
-                act_func="sigmoid",
-                aligned=cfg.DETECTION.ALIGNED,
-            )
+                    num_classes=cfg.MODEL.NUM_CLASSES,
+                    pool_size=[
+                        [
+                            cfg.DATA.NUM_FRAMES
+                            // cfg.SLOWFAST.ALPHA
+                            // pool_size[0][0],
+                            1,
+                            1,
+                        ],
+                        [cfg.DATA.NUM_FRAMES // pool_size[1][0], 1, 1],
+                    ],
+                    resolution=[[cfg.DETECTION.ROI_XFORM_RESOLUTION] * 2] * 2,
+                    scale_factor=[cfg.DETECTION.SPATIAL_SCALE_FACTOR] * 2,
+                    dropout_rate=cfg.MODEL.DROPOUT_RATE,
+                    act_func="sigmoid",
+                    aligned=cfg.DETECTION.ALIGNED,
+                )
+            else:
+                self.head = head_helper.ResNetBasicHead(
+                    dim_in=[
+                        width_per_group * 32,
+                        width_per_group * 32 // cfg.SLOWFAST.BETA_INV,
+                    ],
+                    num_classes=cfg.MODEL.NUM_CLASSES,
+                    pool_size=[
+                        [
+                            cfg.DATA.NUM_FRAMES
+                            // cfg.SLOWFAST.ALPHA
+                            // pool_size[0][0],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[0][1],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[0][2],
+                        ],
+                        [
+                            cfg.DATA.NUM_FRAMES // pool_size[1][0],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[1][1],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[1][2],
+                        ],
+                    ],
+                    dropout_rate=cfg.MODEL.DROPOUT_RATE,
+                )
         else:
-            self.head = head_helper.ResNetBasicHead(
+            assert not cfg.DETECTION.ENABLE
+            self.head = head_helper.ResNetNoPredHead(
                 dim_in=[
                     width_per_group * 32,
                     width_per_group * 32 // cfg.SLOWFAST.BETA_INV,
                 ],
-                num_classes=cfg.MODEL.NUM_CLASSES,
                 pool_size=[
                     [
                         cfg.DATA.NUM_FRAMES
@@ -357,8 +400,33 @@ class SlowFast(nn.Module):
                 ],
                 dropout_rate=cfg.MODEL.DROPOUT_RATE,
             )
+            self.lstm_pred = ActionPredictorNoPred(cfg, output_dim=20)
+            self.pred = head_helper.ResNetPredOnly(
+                dim_in=[
+                    width_per_group * 32,
+                    width_per_group * 32 // cfg.SLOWFAST.BETA_INV,
+                    20
+                ],
+                num_classes=cfg.MODEL.NUM_CLASSES
+            )
+
+    def load_from_non_lstm(self, non_lstm_model):
+        for i in range(1, 5):
+            setattr(self, f"s{i}", getattr(non_lstm_model, f"s{i}"))
+            setattr(self, f"s{i}_fuse", getattr(non_lstm_model, f"s{i}_fuse"))
+
+        self.s5 = non_lstm_model.s5
+
+        for pathway in range(self.num_pathways):
+            setattr(self, f"pathway{pathway}_pool", getattr(non_lstm_model, f"pathway{pathway}_pool"))
+
+    def load_from_lstm(self, lstm_model: ActionPredictor):
+        self.lstm_pred.rnn = lstm_model.rnn
 
     def forward(self, x, bboxes=None):
+        if self.lstm:
+            lstm_input = x[1]
+            x = x[0]
         x = self.s1(x)
         x = self.s1_fuse(x)
         x = self.s2(x)
@@ -371,10 +439,15 @@ class SlowFast(nn.Module):
         x = self.s4(x)
         x = self.s4_fuse(x)
         x = self.s5(x)
-        if self.enable_detection:
-            x = self.head(x, bboxes)
+        if not self.lstm:
+            if self.enable_detection:
+                x = self.head(x, bboxes)
+            else:
+                x = self.head(x)
         else:
             x = self.head(x)
+            lstm_output = self.lstm_pred(lstm_input)
+            x = self.pred(torch.cat((x, lstm_output.view((x.shape[0], 1, 1, 1, -1))), dim=-1))
         return x
 
     def freeze_fn(self, freeze_mode):
@@ -392,6 +465,13 @@ class SlowFast(nn.Module):
                 if isinstance(m, nn.BatchNorm3d):
                     # shutdown running statistics update in frozen mode
                     m.eval()
+        elif freeze_mode == 'all_but_last':
+            print("Freezing all but the last linear layer.")
+            for m in self.children():
+                if not isinstance(m, head_helper.ResNetPredOnly):
+                    _recursive_freeze(m)
+                else:
+                    print(m)
 
 
 @MODEL_REGISTRY.register()

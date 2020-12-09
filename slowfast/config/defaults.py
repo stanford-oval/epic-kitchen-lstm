@@ -189,6 +189,7 @@ _C.MODEL.DROPOUT_RATE = 0.5
 # The std to initialize the fc layer(s).
 _C.MODEL.FC_INIT_STD = 0.01
 
+_C.MODEL.LSTM = False
 
 # -----------------------------------------------------------------------------
 # Slowfast options

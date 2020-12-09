@@ -78,12 +78,17 @@ def get_flop_stats(model, cfg, is_train):
         flop_inputs[i] = flop_inputs[i].unsqueeze(0).cuda(non_blocking=True)
 
     # If detection is enabled, count flops for one proposal.
-    if cfg.DETECTION.ENABLE:
-        bbox = torch.tensor([[0, 0, 1.0, 0, 1.0]])
-        bbox = bbox.cuda()
-        inputs = (flop_inputs, bbox)
+    if not cfg.MODEL.LSTM:
+        if cfg.DETECTION.ENABLE:
+            bbox = torch.tensor([[0, 0, 1.0, 0, 1.0]])
+            bbox = bbox.cuda()
+            inputs = (flop_inputs, bbox)
+        else:
+            inputs = (flop_inputs,)
     else:
-        inputs = (flop_inputs,)
+        label_history = torch.zeros([1, 10, cfg.MODEL.NUM_CLASSES[0] + cfg.MODEL.NUM_CLASSES[1]])
+        label_history = label_history.cuda()
+        inputs = ([flop_inputs, label_history],)
 
     gflop_dict, _ = flop_count(model, inputs)
     gflops = sum(gflop_dict.values())
