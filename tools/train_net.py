@@ -440,6 +440,7 @@ def train(cfg):
     writer_dir = os.path.join("./runs/", current_datetime)
 
     tb_writer = SummaryWriter(writer_dir)
+    tb_writer.global_iter = 0
 
     # Create meters.
     if cfg.DETECTION.ENABLE:
