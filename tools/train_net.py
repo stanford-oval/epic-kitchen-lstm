@@ -436,8 +436,11 @@ def train(cfg):
         train_loader = loader.construct_loader(cfg, "train+val")
         val_loader = loader.construct_loader(cfg, "val")
 
-    current_datetime = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-    writer_dir = os.path.join("./runs/", current_datetime)
+    if cfg.EPICKITCHENS.TB_DIR == "":
+        current_datetime = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+        writer_dir = os.path.join("./runs/", current_datetime)
+    else:
+        writer_dir = cfg.EPICKITCHENS.TB_DIR
 
     tb_writer = SummaryWriter(writer_dir)
     tb_writer.global_iter = 0

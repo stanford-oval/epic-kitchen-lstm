@@ -9,6 +9,7 @@ import os
 from collections import defaultdict, deque
 import torch
 from fvcore.common.timer import Timer
+from torch.utils.tensorboard import SummaryWriter
 
 import slowfast.datasets.ava_helper as ava_helper
 import slowfast.utils.logging as logging
@@ -609,12 +610,24 @@ class ValMeter(object):
         return is_best_epoch
 
 
+def log_to_tensorboard(writer: SummaryWriter, stats: {str: float}, new_iter: bool = True):
+    global_iter = writer.global_iter
+    if new_iter:
+        writer.global_iter += 1
+    type = stats["_type"]
+
+    logging_tags = [tag for tag in stats.keys() if tag != "_type" and tag != "time_diff" and tag != "time_diff" and tag != "epoch" and tag != "iter" and tag!= "eta"]
+    writer.add_scalar(f"{type}/epoch", int(stats['epoch'].split('/')[0]), global_iter)
+    for tag in logging_tags:
+        writer.add_scalar(f"{type}/{tag}", stats[tag], global_iter)
+
+
 class EPICTrainMeter(object):
     """
     Measure training stats.
     """
 
-    def __init__(self, epoch_iters, cfg):
+    def __init__(self, summary_writer, epoch_iters, cfg):
         """
         Args:
             epoch_iters (int): the overall number of iterations of one epoch.
@@ -646,6 +659,8 @@ class EPICTrainMeter(object):
         self.num_noun_top1_cor = 0
         self.num_noun_top5_cor = 0
         self.num_samples = 0
+
+        self.tb_writer: SummaryWriter = summary_writer
 
     def reset(self):
         """
@@ -749,6 +764,7 @@ class EPICTrainMeter(object):
             "lr": self.lr,
             "mem": int(np.ceil(mem_usage)),
         }
+        log_to_tensorboard(self.tb_writer, stats)
         logging.log_json_stats(stats)
 
     def log_epoch_stats(self, cur_epoch):
@@ -788,6 +804,7 @@ class EPICTrainMeter(object):
             "lr": self.lr,
             "mem": int(np.ceil(mem_usage)),
         }
+        log_to_tensorboard(self.tb_writer, stats, False)
         logging.log_json_stats(stats)
 
 
@@ -796,7 +813,7 @@ class EPICValMeter(object):
     Measures validation stats.
     """
 
-    def __init__(self, max_iter, cfg):
+    def __init__(self, summary_writer, max_iter, cfg):
         """
         Args:
             max_iter (int): the max number of iteration of the current epoch.
@@ -827,6 +844,8 @@ class EPICValMeter(object):
         self.num_noun_top1_cor = 0
         self.num_noun_top5_cor = 0
         self.num_samples = 0
+
+        self.tb_writer: SummaryWriter = summary_writer
 
     def reset(self):
         """
@@ -907,6 +926,7 @@ class EPICValMeter(object):
             "top5_acc": self.mb_top5_acc.get_win_median(),
             "mem": int(np.ceil(mem_usage)),
         }
+        log_to_tensorboard(self.tb_writer, stats)
         logging.log_json_stats(stats)
 
     def log_epoch_stats(self, cur_epoch):
@@ -947,6 +967,7 @@ class EPICValMeter(object):
             "max_top5_acc": self.max_top5_acc,
             "mem": int(np.ceil(mem_usage)),
         }
+        log_to_tensorboard(self.tb_writer, stats, False)
         logging.log_json_stats(stats)
 
         return is_best_epoch
