@@ -464,17 +464,17 @@ def train(cfg):
         # Shuffle the dataset.
         loader.shuffle_dataset(train_loader, cur_epoch)
         # Train for one epoch.
-        train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg)
-
-        # Compute precise BN stats.
-        if cfg.BN.USE_PRECISE_STATS and len(get_bn_modules(model)) > 0:
-            calculate_and_update_precise_bn(
-                train_loader, model, cfg.BN.NUM_BATCHES_PRECISE
-            )
-
-        # Save a checkpoint.
-        if cu.is_checkpoint_epoch(cur_epoch, cfg.TRAIN.CHECKPOINT_PERIOD):
-            cu.save_checkpoint(cfg.OUTPUT_DIR, model, optimizer, cur_epoch, cfg)
+        # train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg)
+        #
+        # # Compute precise BN stats.
+        # if cfg.BN.USE_PRECISE_STATS and len(get_bn_modules(model)) > 0:
+        #     calculate_and_update_precise_bn(
+        #         train_loader, model, cfg.BN.NUM_BATCHES_PRECISE
+        #     )
+        #
+        # # Save a checkpoint.
+        # if cu.is_checkpoint_epoch(cur_epoch, cfg.TRAIN.CHECKPOINT_PERIOD):
+        #     cu.save_checkpoint(cfg.OUTPUT_DIR, model, optimizer, cur_epoch, cfg)
         # Evaluate the model on validation set.
         if misc.is_eval_epoch(cfg, cur_epoch):
             is_best_epoch = eval_epoch(val_loader, model, val_meter, cur_epoch, cfg)
