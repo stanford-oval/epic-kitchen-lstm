@@ -420,8 +420,8 @@ class SlowFast(nn.Module):
         for pathway in range(self.num_pathways):
             setattr(self, f"pathway{pathway}_pool", getattr(non_lstm_model, f"pathway{pathway}_pool"))
 
-        if not self.lstm:
-            setattr(self, "head", getattr(non_lstm_model, "head"))
+        # if not self.lstm:
+        #     setattr(self, "head", getattr(non_lstm_model, "head"))
 
     def load_from_lstm(self, lstm_model: ActionPredictor):
         if self.lstm:
