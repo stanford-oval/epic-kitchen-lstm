@@ -355,12 +355,11 @@ class SlowFast(nn.Module):
                     aligned=cfg.DETECTION.ALIGNED,
                 )
             else:
-                self.head = head_helper.ResNetBasicHead(
+                self.head = head_helper.ResNetNoPredHead(
                     dim_in=[
                         width_per_group * 32,
                         width_per_group * 32 // cfg.SLOWFAST.BETA_INV,
                     ],
-                    num_classes=cfg.MODEL.NUM_CLASSES,
                     pool_size=[
                         [
                             cfg.DATA.NUM_FRAMES
@@ -376,6 +375,13 @@ class SlowFast(nn.Module):
                         ],
                     ],
                     dropout_rate=cfg.MODEL.DROPOUT_RATE,
+                )
+                self.pred = head_helper.ResNetPredOnly(
+                    dim_in=[
+                        width_per_group * 32,
+                        width_per_group * 32 // cfg.SLOWFAST.BETA_INV
+                    ],
+                    num_classes=cfg.MODEL.NUM_CLASSES
                 )
         else:
             assert not cfg.DETECTION.ENABLE
@@ -410,7 +416,7 @@ class SlowFast(nn.Module):
                 num_classes=cfg.MODEL.NUM_CLASSES
             )
 
-    def load_from_non_lstm(self, non_lstm_model):
+    def load_from_non_lstm(self, non_lstm_model:"SlowFast"):
         for i in range(1, 5):
             setattr(self, f"s{i}", getattr(non_lstm_model, f"s{i}"))
             setattr(self, f"s{i}_fuse", getattr(non_lstm_model, f"s{i}_fuse"))
@@ -421,7 +427,7 @@ class SlowFast(nn.Module):
             setattr(self, f"pathway{pathway}_pool", getattr(non_lstm_model, f"pathway{pathway}_pool"))
 
         if not self.lstm:
-            setattr(self, "head", getattr(non_lstm_model, "head"))
+            self.pred.load_from_resnet_basic_head(non_lstm_model.head)
 
     def load_from_lstm(self, lstm_model: ActionPredictor):
         if self.lstm:
@@ -448,6 +454,7 @@ class SlowFast(nn.Module):
                 x = self.head(x, bboxes)
             else:
                 x = self.head(x)
+                x = self.pred(x)
         else:
             x = self.head(x)
             lstm_output = self.lstm_pred(lstm_input)

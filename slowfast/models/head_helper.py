@@ -356,6 +356,14 @@ class ResNetPredOnly(nn.Module):
                 "function.".format(act_func)
             )
 
+    def load_from_resnet_basic_head(self, resnet_head: ResNetBasicHead):
+        if isinstance(self.num_classes, (list, tuple)):
+            self.projection_verb = resnet_head.projection_verb
+            self.projection_noun = resnet_head.projection_noun
+        else:
+            self.projection = resnet_head.projection
+
+
     def forward(self, inputs):
         x = inputs
         if isinstance(self.num_classes, (list, tuple)):
