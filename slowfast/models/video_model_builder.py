@@ -165,6 +165,7 @@ class SlowFast(nn.Module):
         self.enable_detection = cfg.DETECTION.ENABLE
         self.num_pathways = 2
         self.lstm = cfg.MODEL.LSTM
+        self.sep_pred = cfg.MODEL.SEP_PRED
         self._construct_network(cfg)
         init_helper.init_weights(
             self, cfg.MODEL.FC_INIT_STD, cfg.RESNET.ZERO_INIT_FINAL_BN
@@ -354,7 +355,7 @@ class SlowFast(nn.Module):
                     act_func="sigmoid",
                     aligned=cfg.DETECTION.ALIGNED,
                 )
-            else:
+            elif self.sep_pred:
                 self.head = head_helper.ResNetNoPredHead(
                     dim_in=[
                         width_per_group * 32,
@@ -382,6 +383,29 @@ class SlowFast(nn.Module):
                         width_per_group * 32 // cfg.SLOWFAST.BETA_INV
                     ],
                     num_classes=cfg.MODEL.NUM_CLASSES
+                )
+            else:
+                self.head = head_helper.ResNetBasicHead(
+                    dim_in=[
+                        width_per_group * 32,
+                        width_per_group * 32 // cfg.SLOWFAST.BETA_INV,
+                    ],
+                    num_classes=cfg.MODEL.NUM_CLASSES,
+                    pool_size=[
+                        [
+                            cfg.DATA.NUM_FRAMES
+                            // cfg.SLOWFAST.ALPHA
+                            // pool_size[0][0],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[0][1],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[0][2],
+                        ],
+                        [
+                            cfg.DATA.NUM_FRAMES // pool_size[1][0],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[1][1],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[1][2],
+                        ],
+                    ],
+                    dropout_rate=cfg.MODEL.DROPOUT_RATE,
                 )
         else:
             assert not cfg.DETECTION.ENABLE

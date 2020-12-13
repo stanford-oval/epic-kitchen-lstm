@@ -57,6 +57,7 @@ MODEL:
   LOSS_FUNC: cross_entropy
   DROPOUT_RATE: 0.5
   LSTM: False
+  SEP_PRED: True
 TEST:
   ENABLE: False
   DATASET: epickitchens
