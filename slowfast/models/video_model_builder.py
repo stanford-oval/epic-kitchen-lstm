@@ -165,6 +165,7 @@ class SlowFast(nn.Module):
         self.enable_detection = cfg.DETECTION.ENABLE
         self.num_pathways = 2
         self.lstm = cfg.MODEL.LSTM
+        self.sep_pred = cfg.MODEL.SEP_PRED
         self._construct_network(cfg)
         init_helper.init_weights(
             self, cfg.MODEL.FC_INIT_STD, cfg.RESNET.ZERO_INIT_FINAL_BN
@@ -354,6 +355,35 @@ class SlowFast(nn.Module):
                     act_func="sigmoid",
                     aligned=cfg.DETECTION.ALIGNED,
                 )
+            elif self.sep_pred:
+                self.head = head_helper.ResNetNoPredHead(
+                    dim_in=[
+                        width_per_group * 32,
+                        width_per_group * 32 // cfg.SLOWFAST.BETA_INV,
+                    ],
+                    pool_size=[
+                        [
+                            cfg.DATA.NUM_FRAMES
+                            // cfg.SLOWFAST.ALPHA
+                            // pool_size[0][0],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[0][1],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[0][2],
+                        ],
+                        [
+                            cfg.DATA.NUM_FRAMES // pool_size[1][0],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[1][1],
+                            cfg.DATA.CROP_SIZE // 32 // pool_size[1][2],
+                        ],
+                    ],
+                    dropout_rate=cfg.MODEL.DROPOUT_RATE,
+                )
+                self.pred = head_helper.ResNetPredOnly(
+                    dim_in=[
+                        width_per_group * 32,
+                        width_per_group * 32 // cfg.SLOWFAST.BETA_INV
+                    ],
+                    num_classes=cfg.MODEL.NUM_CLASSES
+                )
             else:
                 self.head = head_helper.ResNetBasicHead(
                     dim_in=[
@@ -410,7 +440,7 @@ class SlowFast(nn.Module):
                 num_classes=cfg.MODEL.NUM_CLASSES
             )
 
-    def load_from_non_lstm(self, non_lstm_model):
+    def load_from_non_lstm(self, non_lstm_model:"SlowFast"):
         for i in range(1, 5):
             setattr(self, f"s{i}", getattr(non_lstm_model, f"s{i}"))
             setattr(self, f"s{i}_fuse", getattr(non_lstm_model, f"s{i}_fuse"))
@@ -421,7 +451,7 @@ class SlowFast(nn.Module):
             setattr(self, f"pathway{pathway}_pool", getattr(non_lstm_model, f"pathway{pathway}_pool"))
 
         # if not self.lstm:
-        #     setattr(self, "head", getattr(non_lstm_model, "head"))
+        #     self.pred.load_from_resnet_basic_head(non_lstm_model.head)
 
     def load_from_lstm(self, lstm_model: ActionPredictor):
         if self.lstm:
@@ -448,6 +478,7 @@ class SlowFast(nn.Module):
                 x = self.head(x, bboxes)
             else:
                 x = self.head(x)
+                x = self.pred(x)
         else:
             x = self.head(x)
             lstm_output = self.lstm_pred(lstm_input)
