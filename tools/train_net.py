@@ -47,9 +47,11 @@ def train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg):
     model.freeze_fn('all_but_last')
 
     train_meter.iter_tic()
-    data_size = len(train_loader)
+    data_size = len(train_loader) // 10
 
     for cur_iter, (inputs_img, inputs_label, labels, _, meta) in enumerate(train_loader):
+        if cur_iter == data_size:
+            break
         # Transfer the data to the current GPU device.
         if isinstance(inputs_img, (list,)):
             for i in range(len(inputs_img)):
@@ -450,14 +452,14 @@ def train(cfg):
 
     # Create meters.
     if cfg.DETECTION.ENABLE:
-        train_meter = AVAMeter(len(train_loader), cfg, mode="train")
+        train_meter = AVAMeter(len(train_loader) // 10, cfg, mode="train")
         val_meter = AVAMeter(len(val_loader), cfg, mode="val")
     else:
         if cfg.TRAIN.DATASET == 'epickitchens':
-            train_meter = EPICTrainMeter(tb_writer, len(train_loader), cfg)
+            train_meter = EPICTrainMeter(tb_writer, len(train_loader) // 10, cfg)
             val_meter = EPICValMeter(tb_writer, len(val_loader), cfg)
         else:
-            train_meter = TrainMeter(len(train_loader), cfg)
+            train_meter = TrainMeter(len(train_loader) // 10, cfg)
             val_meter = ValMeter(len(val_loader), cfg)
 
     # Perform the training loop.
