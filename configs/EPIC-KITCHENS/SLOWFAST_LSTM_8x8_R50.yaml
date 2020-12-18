@@ -56,8 +56,8 @@ MODEL:
   MODEL_NAME: SlowFast
   LOSS_FUNC: cross_entropy
   DROPOUT_RATE: 0.5
-  LSTM: False
-  SEP_PRED: True
+  LSTM: True
+  SEP_PRED: False
 TEST:
   ENABLE: False
   DATASET: epickitchens
