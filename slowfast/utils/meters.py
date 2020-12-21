@@ -634,8 +634,7 @@ class EPICTrainMeter(object):
             cfg (CfgNode): configs.
         """
         self._cfg = cfg
-        self.epoch_iters = epoch_iters
-        self.MAX_EPOCH = cfg.SOLVER.MAX_EPOCH * epoch_iters
+        self.update_epoch_iters(epoch_iters)
         self.iter_timer = Timer()
         self.loss = ScalarMeter(cfg.LOG_PERIOD)
         self.loss_total = 0.0
@@ -661,6 +660,10 @@ class EPICTrainMeter(object):
         self.num_samples = 0
 
         self.tb_writer: SummaryWriter = summary_writer
+
+    def update_epoch_iters(self, epoch_iters):
+        self.epoch_iters = epoch_iters
+        self.MAX_EPOCH = self._cfg.SOLVER.MAX_EPOCH * epoch_iters
 
     def reset(self):
         """

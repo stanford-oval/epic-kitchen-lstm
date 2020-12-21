@@ -44,10 +44,16 @@ def train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg):
     model.train()
     if cfg.BN.FREEZE:
         model.freeze_fn('bn_statistics')
-    model.freeze_fn('all_but_last')
+    if cur_epoch >= cfg.SOLVER.FREEZE_EPOCH:
+        model.freeze_fn('none')
+    else:
+        model.freeze_fn('all_but_last')
 
     train_meter.iter_tic()
-    data_size = len(train_loader) // 10
+    if cur_epoch >= cfg.SOLVER.FREEZE_EPOCH:
+        data_size = len(train_loader)
+    else:
+        data_size = len(train_loader) // 10
 
     for cur_iter, (inputs_img, inputs_label, labels, _, meta) in enumerate(train_loader):
         if cur_iter == data_size:
@@ -469,6 +475,9 @@ def train(cfg):
         # Shuffle the dataset.
         loader.shuffle_dataset(train_loader, cur_epoch)
         # Train for one epoch.
+        if cur_epoch == cfg.SOLVER.FREEZE_EPOCH:
+            print("Update meter epoch_iter")
+            train_meter.update_epoch_iters(len(train_loader))
         train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg)
 
         # Compute precise BN stats.

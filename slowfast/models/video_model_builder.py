@@ -88,6 +88,16 @@ def _recursive_freeze(module: torch.nn.Module) -> None:
             _recursive_freeze(module=child)
 
 
+def _make_trainable(module: torch.nn.Module) -> None:
+    """Unfreezes a given module.
+    Args:
+        module: The module to unfreeze
+    """
+    for param in module.parameters():
+        param.requires_grad = True
+    module.train()
+
+
 class FuseFastToSlow(nn.Module):
     """
     Fuses the information from the Fast pathway to the Slow pathway. Given the
@@ -507,6 +517,10 @@ class SlowFast(nn.Module):
                     _recursive_freeze(m)
                 else:
                     print(m)
+
+        elif freeze_mode == 'none':
+            print("Unfreezing all layers.")
+            _make_trainable(self)
 
 
 @MODEL_REGISTRY.register()

@@ -279,6 +279,9 @@ _C.SOLVER.LRS = []
 # Maximal number of epochs.
 _C.SOLVER.MAX_EPOCH = 300
 
+# Number of epochs with freezed layers.
+_C.SOLVER.FREEZE_EPOCH = 150
+
 # Momentum.
 _C.SOLVER.MOMENTUM = 0.9
 
