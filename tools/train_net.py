@@ -351,13 +351,14 @@ def calculate_and_update_precise_bn(loader, model, num_iters=200):
     """
 
     def _gen_loader():
-        for inputs, _, _, _ in loader:
-            if isinstance(inputs, (list,)):
-                for i in range(len(inputs)):
-                    inputs[i] = inputs[i].cuda(non_blocking=True)
+        for inputs_img, inputs_label, _, _, _ in loader:
+            if isinstance(inputs_img, (list,)):
+                for i in range(len(inputs_img)):
+                    inputs_img[i] = inputs_img[i].cuda(non_blocking=True)
             else:
-                inputs = inputs.cuda(non_blocking=True)
-            yield inputs
+                inputs_img = inputs_img.cuda(non_blocking=True)
+            inputs_label = inputs_label.cuda()
+            yield [inputs_img, inputs_label]
 
     # Update the bn stats.
     update_bn_stats(model, _gen_loader(), num_iters)
