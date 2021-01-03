@@ -492,7 +492,7 @@ class SlowFast(nn.Module):
         else:
             x = self.head(x)
             lstm_output = self.lstm_pred(lstm_input)
-            x = self.pred(torch.cat((x, lstm_output.view((x.shape[0], 1, 1, 1, -1))), dim=-1))
+            x = self.pred(torch.cat((x, lstm_output.view((x.shape[0], 1, 1, 1, -1)).expand(x.shape[:-1] + (-1,))), dim=-1))
         return x
 
     def freeze_fn(self, freeze_mode):

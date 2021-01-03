@@ -42,13 +42,14 @@ def perform_test(test_loader, model, test_meter, cfg):
 
     test_meter.iter_tic()
 
-    for cur_iter, (inputs, labels, video_idx, meta) in enumerate(test_loader):
+    for cur_iter, (inputs_img, inputs_label, labels, video_idx, meta) in enumerate(test_loader):
         # Transfer the data to the current GPU device.
-        if isinstance(inputs, (list,)):
-            for i in range(len(inputs)):
-                inputs[i] = inputs[i].cuda(non_blocking=True)
+        if isinstance(inputs_img, (list,)):
+            for i in range(len(inputs_img)):
+                inputs_img[i] = inputs_img[i].cuda(non_blocking=True)
         else:
-            inputs = inputs.cuda(non_blocking=True)
+            inputs_img = inputs_img.cuda(non_blocking=True)
+        inputs_label = inputs_label.cuda()
 
         # Transfer the data to the current GPU device.
         if isinstance(labels, (dict,)):
@@ -60,13 +61,14 @@ def perform_test(test_loader, model, test_meter, cfg):
         if cfg.DETECTION.ENABLE:
             for key, val in meta.items():
                 if isinstance(val, (list,)):
-                    for i in range(len(val)):
-                        val[i] = val[i].cuda(non_blocking=True)
+                    pass
+                    # for i in range(len(val)):
+                    #     val[i] = val[i].cuda(non_blocking=True)
                 else:
                     meta[key] = val.cuda(non_blocking=True)
 
             # Compute the predictions.
-            preds = model(inputs, meta["boxes"])
+            preds = model(inputs_img, meta["boxes"])
 
             preds = preds.cpu()
             ori_boxes = meta["ori_boxes"].cpu()
@@ -87,7 +89,10 @@ def perform_test(test_loader, model, test_meter, cfg):
             test_meter.log_iter_stats(None, cur_iter)
         else:
             # Perform the forward pass.
-            preds = model(inputs)
+            if cfg.MODEL.LSTM:
+                preds = model([inputs_img, inputs_label])
+            else:
+                preds = model(inputs_img)
 
             if isinstance(labels, (dict,)):
                 # Gather all the predictions across all the devices to perform ensemble.
