@@ -1,4 +1,5 @@
 import os
+import random
 
 import functools
 import pandas as pd
@@ -20,7 +21,7 @@ logger = logging.get_logger(__name__)
 @DATASET_REGISTRY.register()
 class Epickitchens(torch.utils.data.Dataset):
 
-    def __init__(self, cfg, mode):
+    def __init__(self, cfg, mode, sample_rate=.0):
 
         assert mode in [
             "train",
@@ -37,10 +38,12 @@ class Epickitchens(torch.utils.data.Dataset):
         # the frames.
         if self.mode in ["train", "val", "train+val"]:
             self._num_clips = 1
+            self.sample_rate = sample_rate
         elif self.mode in ["test"]:
             self._num_clips = (
                     cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS
             )
+            self.sample_rate = 1.0
 
         logger.info("Constructing EPIC-KITCHENS {}...".format(mode))
         self._construct_loader()
@@ -171,12 +174,18 @@ class Epickitchens(torch.utils.data.Dataset):
         for i, cur_index in enumerate(range(index - SEQ_LEN, index)):
             cur_record = self._video_records[cur_index]
             if cur_record.untrimmed_video_name == current_record.untrimmed_video_name:
-                history_label_verb[i, cur_record.label['verb']] = 1
-                history_label_noun[i, cur_record.label['noun']] = 1
+                if random.random() > self.sample_rate:
+                    history_label_verb[i, cur_record.label['verb']] = 1
+                    history_label_noun[i, cur_record.label['noun']] = 1
+                else:
+                    history_label_verb[i, cur_record.temp_label['verb']] = 1
+                    history_label_noun[i, cur_record.temp_label['noun']] = 1
         history_label = torch.cat((history_label_noun, history_label_verb), dim=1)
 
         return frames, history_label, label, index, metadata
 
+    def set_temp_labels(self, idx, verb, noun):
+        self._video_records[idx].set_temp_label(verb, noun)
 
     def __len__(self):
         return len(self._video_records)

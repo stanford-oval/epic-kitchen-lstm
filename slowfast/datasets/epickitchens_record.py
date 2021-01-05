@@ -5,6 +5,9 @@ class EpicKitchensVideoRecord(VideoRecord):
     def __init__(self, tup):
         self._index = str(tup[0])
         self._series = tup[1]
+        self._temp_verb = -1
+        self._temp_noun = -1
+        self._temp_valid = False
 
     @property
     def participant(self):
@@ -35,6 +38,20 @@ class EpicKitchensVideoRecord(VideoRecord):
     def label(self):
         return {'verb': self._series['verb_class'] if 'verb_class' in self._series else -1,
                 'noun': self._series['noun_class'] if 'noun_class' in self._series else -1}
+
+    @property
+    def temp_label(self):
+        assert self._temp_valid
+        return {'verb': self._temp_verb if self._temp_valid else -1,
+                'noun': self._temp_noun if self._temp_valid else -1}
+
+    def set_temp_label(self, verb, noun):
+        self._temp_verb = verb
+        self._temp_noun = noun
+        self._temp_valid = True
+
+    def invalidate_temp(self):
+        self._temp_valid = False
 
     @property
     def metadata(self):

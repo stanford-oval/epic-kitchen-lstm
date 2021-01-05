@@ -121,6 +121,10 @@ def perform_test(test_loader, model, test_meter, cfg):
                     video_idx.detach().cpu(),
                 )
                 test_meter.log_iter_stats(cur_iter)
+                for result_idx, video_id in enumerate(video_idx.detach().cpu()):
+                    verb_result = torch.argmax(verb_preds[result_idx]).item()
+                    noun_result = torch.argmax(noun_preds[result_idx]).item()
+                    test_loader.dataset.set_temp_labels(video_id, verb_result, noun_result)
             else:
                 # Gather all the predictions across all the devices to perform ensemble.
                 if cfg.NUM_GPUS > 1:
