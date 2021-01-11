@@ -168,7 +168,7 @@ class Epickitchens(torch.utils.data.Dataset):
         metadata = self._video_records[index].metadata
 
         current_record = self._video_records[index]
-        SEQ_LEN = 10
+        SEQ_LEN = 100
         history_label_verb = torch.zeros((SEQ_LEN, self.cfg.MODEL.NUM_CLASSES[0]))
         history_label_noun = torch.zeros((SEQ_LEN, self.cfg.MODEL.NUM_CLASSES[1]))
         for i, cur_index in enumerate(range(index - SEQ_LEN, index)):
