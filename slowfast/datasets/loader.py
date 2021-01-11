@@ -50,7 +50,7 @@ def detection_collate(batch):
     return inputs, labels, video_idx, collated_extra_data
 
 
-def construct_loader(cfg, split):
+def construct_loader(cfg, split, dataset=None):
     """
     Constructs the data loader for the given dataset.
     Args:
@@ -59,25 +59,36 @@ def construct_loader(cfg, split):
         split (str): the split of the data loader. Options include `train`,
             `val`, and `test`.
     """
-    assert split in ["train", "val", "test", "train+val"]
     if split in ["train", "train+val"]:
         dataset_name = cfg.TRAIN.DATASET
         batch_size = int(cfg.TRAIN.BATCH_SIZE / cfg.NUM_GPUS)
         shuffle = True
         drop_last = True
+        num_workers = cfg.DATA_LOADER.NUM_WORKERS
+    elif split in ["train-in-order"]:
+        dataset_name = cfg.TRAIN.DATASET
+        batch_size = int(cfg.TRAIN.BATCH_SIZE / cfg.NUM_GPUS)
+        shuffle = False
+        drop_last = False
+        num_workers = cfg.DATA_LOADER.TEST_NUM_WORKERS
     elif split in ["val"]:
         dataset_name = cfg.TRAIN.DATASET
         batch_size = int(cfg.TRAIN.BATCH_SIZE / cfg.NUM_GPUS)
         shuffle = False
         drop_last = False
+        num_workers = cfg.DATA_LOADER.NUM_WORKERS
     elif split in ["test"]:
         dataset_name = cfg.TEST.DATASET
         batch_size = int(cfg.TEST.BATCH_SIZE / cfg.NUM_GPUS)
         shuffle = False
         drop_last = False
+        num_workers = cfg.DATA_LOADER.TEST_NUM_WORKERS
+    else:
+        assert False
 
     # Construct the dataset
-    dataset = build_dataset(dataset_name, cfg, split)
+    if dataset is None:
+        dataset = build_dataset(dataset_name, cfg, split)
     # Create a sampler for multi-process training
     sampler = DistributedSampler(dataset) if cfg.NUM_GPUS > 1 else None
     # Create a loader
@@ -86,7 +97,7 @@ def construct_loader(cfg, split):
         batch_size=batch_size,
         shuffle=(False if sampler else shuffle),
         sampler=sampler,
-        num_workers=cfg.DATA_LOADER.NUM_WORKERS,
+        num_workers=num_workers,
         pin_memory=cfg.DATA_LOADER.PIN_MEMORY,
         drop_last=drop_last,
         collate_fn=detection_collate if cfg.DETECTION.ENABLE else None,

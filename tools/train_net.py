@@ -22,7 +22,8 @@ import slowfast.utils.misc as misc
 from slowfast.datasets import loader
 from slowfast.models import build_model, SlowFast
 from slowfast.models.action_predictor import ActionPredictor
-from slowfast.utils.meters import AVAMeter, TrainMeter, ValMeter, EPICTrainMeter, EPICValMeter
+from slowfast.utils.meters import AVAMeter, TrainMeter, ValMeter, EPICTrainMeter, EPICValMeter, TestMeter, EPICTestMeter
+from tools.test_net import perform_test
 
 logger = logging.get_logger(__name__)
 
@@ -473,12 +474,36 @@ def train(cfg):
     logger.info("Start epoch: {}".format(start_epoch + 1))
 
     for cur_epoch in range(start_epoch, cfg.SOLVER.MAX_EPOCH):
-        # Shuffle the dataset.
-        loader.shuffle_dataset(train_loader, cur_epoch)
         # Train for one epoch.
         if cur_epoch == cfg.SOLVER.FREEZE_EPOCH:
             print("Update meter epoch_iter")
             train_meter.update_epoch_iters(len(train_loader))
+        if cur_epoch >= cfg.SOLVER.FREEZE_EPOCH:
+            train_loader.dataset.sample_rate = \
+                (cur_epoch - cfg.SOLVER.FREEZE_EPOCH + 1) / (cfg.SOLVER.MAX_EPOCH - cfg.SOLVER.FREEZE_EPOCH)
+            train_in_order_loader = loader.construct_loader(cfg, "train-in-order", train_loader.dataset)
+            if cfg.TEST.DATASET == 'epickitchens':
+                test_meter = EPICTestMeter(
+                    len(train_in_order_loader.dataset)
+                    // (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),
+                    cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS,
+                    cfg.MODEL.NUM_CLASSES,
+                    len(train_in_order_loader),
+                )
+            else:
+                test_meter = TestMeter(
+                    len(train_in_order_loader.dataset)
+                    // (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),
+                    cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS,
+                    cfg.MODEL.NUM_CLASSES,
+                    len(train_in_order_loader),
+                )
+            perform_test(train_in_order_loader, model, test_meter, cfg)
+            train_loader.dataset.sample_rate = 1
+            train_loader = loader.construct_loader(cfg, "train", train_loader.dataset)
+        else:
+            # Shuffle the dataset.
+            loader.shuffle_dataset(train_loader, cur_epoch)
         train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg)
 
         # Compute precise BN stats.
