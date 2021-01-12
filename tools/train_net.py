@@ -484,17 +484,15 @@ def train(cfg):
             train_in_order_loader = loader.construct_loader(cfg, "train-in-order", train_loader.dataset)
             if cfg.TEST.DATASET == 'epickitchens':
                 test_meter = EPICTestMeter(
-                    len(train_in_order_loader.dataset)
-                    // (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),
-                    cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS,
+                    len(train_in_order_loader.dataset),
+                    1,
                     cfg.MODEL.NUM_CLASSES,
                     len(train_in_order_loader),
                 )
             else:
                 test_meter = TestMeter(
-                    len(train_in_order_loader.dataset)
-                    // (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),
-                    cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS,
+                    len(train_in_order_loader.dataset),
+                    1,
                     cfg.MODEL.NUM_CLASSES,
                     len(train_in_order_loader),
                 )
