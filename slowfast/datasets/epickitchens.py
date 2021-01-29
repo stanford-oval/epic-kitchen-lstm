@@ -171,7 +171,8 @@ class Epickitchens(torch.utils.data.Dataset):
         SEQ_LEN = 100
         history_label_verb = torch.zeros((SEQ_LEN, self.cfg.MODEL.NUM_CLASSES[0]))
         history_label_noun = torch.zeros((SEQ_LEN, self.cfg.MODEL.NUM_CLASSES[1]))
-        for i, cur_index in enumerate(range(index - SEQ_LEN, index)):
+        for i, back_index in enumerate(range(-SEQ_LEN, 0)):
+            cur_index = index + back_index * self._num_clips
             cur_record = self._video_records[cur_index]
             if cur_record.untrimmed_video_name == current_record.untrimmed_video_name:
                 if random.random() > self.sample_rate:
