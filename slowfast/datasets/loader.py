@@ -101,17 +101,25 @@ def construct_loader(cfg, split, dataset=None):
     if sequential:
         batch_sampler = SequentialBatchSampler(dataset, batch_size)
     # Create a loader
-    loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=batch_size,
-        # shuffle=(False if sampler else shuffle),
-        shuffle=shuffle,
-        batch_sampler=batch_sampler,
-        num_workers=num_workers,
-        pin_memory=cfg.DATA_LOADER.PIN_MEMORY,
-        drop_last=drop_last,
-        collate_fn=detection_collate if cfg.DETECTION.ENABLE else None,
-    )
+    if sequential:
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            num_workers=num_workers,
+            pin_memory=cfg.DATA_LOADER.PIN_MEMORY,
+            collate_fn=detection_collate if cfg.DETECTION.ENABLE else None,
+        )
+    else:
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=batch_size,
+            # shuffle=(False if sampler else shuffle),
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=cfg.DATA_LOADER.PIN_MEMORY,
+            drop_last=drop_last,
+            collate_fn=detection_collate if cfg.DETECTION.ENABLE else None,
+        )
     return loader
 
 

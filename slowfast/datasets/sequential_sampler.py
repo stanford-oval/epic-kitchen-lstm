@@ -49,7 +49,7 @@ class SequentialBatchSampler(Sampler[Sequence[int]]):
         self.sequence = sequence
 
     def __len__(self):
-        len(self.sequence)
+        return len(self.sequence)
 
     def __iter__(self):
         return self.sequence.__iter__()
