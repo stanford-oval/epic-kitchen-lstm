@@ -392,7 +392,7 @@ def train(cfg):
     cfg.MODEL.SEP_PRED = False
     non_lstm_model = build_model(cfg)
     cu.load_checkpoint("./pretrained/SlowFast.pyth", non_lstm_model, cfg.NUM_GPUS > 1)
-    model_lstm = ActionPredictor.load_from_checkpoint("./pretrained/lstm.ckpt", cfg=cfg)
+    model_lstm = ActionPredictor.load_from_checkpoint("./pretrained/" + cfg.MODEL.PRETRAINED_NAME, cfg=cfg)
     model.load_from_non_lstm(non_lstm_model.cuda())
     model.load_from_lstm(model_lstm.cuda())
     cfg.MODEL.LSTM = original_cfg_model_lstm

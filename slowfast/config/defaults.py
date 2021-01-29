@@ -191,6 +191,12 @@ _C.MODEL.FC_INIT_STD = 0.01
 
 _C.MODEL.LSTM = False
 
+_C.MODEL.LSTM_TYPE = "GRU"
+
+_C.MODEL.LSTM_LAYER_NUM = 2
+
+_C.MODEL.PRETRAINED_NAME = "gru_layer_2.ckpt"
+
 _C.MODEL.SEP_PRED = False
 
 # -----------------------------------------------------------------------------

@@ -465,7 +465,7 @@ class SlowFast(nn.Module):
 
     def load_from_lstm(self, lstm_model: ActionPredictor):
         if self.lstm:
-            self.lstm_pred.rnn = lstm_model.rnn
+            self.lstm_pred.network = lstm_model.network
 
     def forward(self, x, bboxes=None):
         if self.lstm:

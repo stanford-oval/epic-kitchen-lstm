@@ -58,6 +58,9 @@ MODEL:
   LOSS_FUNC: cross_entropy
   DROPOUT_RATE: 0.5
   LSTM: True
+  LSTM_TYPE: GRU
+  LSTM_LAYER_NUM: 2
+  PRETRAINED_NAME: gru_layer_2.ckpt
   SEP_PRED: False
 TEST:
   ENABLE: False
