@@ -51,7 +51,7 @@ def perform_test(test_loader: DataLoader, model, test_meter, cfg):
         history_label_verb = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[0], ))
         history_label_noun = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[1], ))
         for i in range(inputs_index.shape[0]):
-            for j, index in inputs_index[i]:
+            for j, index in enumerate(inputs_index[i]):
                 if index != -1:
                     # noinspection PyTypeChecker
                     dataset: Epickitchens = test_loader.dataset
