@@ -11,6 +11,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler
 
 from .build import build_dataset
+from .sequential_sampler import SequentialBatchSampler
 
 
 def detection_collate(batch):
@@ -65,24 +66,28 @@ def construct_loader(cfg, split, dataset=None):
         shuffle = True
         drop_last = True
         num_workers = cfg.DATA_LOADER.NUM_WORKERS
+        sequential = False
     elif split in ["train-in-order"]:
         dataset_name = cfg.TRAIN.DATASET
         batch_size = int(cfg.TEST.BATCH_SIZE / cfg.NUM_GPUS)
         shuffle = False
         drop_last = False
         num_workers = cfg.DATA_LOADER.TEST_NUM_WORKERS
+        sequential = True
     elif split in ["val"]:
         dataset_name = cfg.TRAIN.DATASET
         batch_size = int(cfg.TRAIN.BATCH_SIZE / cfg.NUM_GPUS)
         shuffle = False
         drop_last = False
-        num_workers = cfg.DATA_LOADER.NUM_WORKERS
+        num_workers = cfg.DATA_LOADER.TEST_NUM_WORKERS
+        sequential = True
     elif split in ["test"]:
         dataset_name = cfg.TEST.DATASET
         batch_size = int(cfg.TEST.BATCH_SIZE / cfg.NUM_GPUS)
         shuffle = False
         drop_last = False
         num_workers = cfg.DATA_LOADER.TEST_NUM_WORKERS
+        sequential = True
     else:
         assert False
 
@@ -90,13 +95,18 @@ def construct_loader(cfg, split, dataset=None):
     if dataset is None:
         dataset = build_dataset(dataset_name, cfg, split)
     # Create a sampler for multi-process training
-    sampler = DistributedSampler(dataset) if cfg.NUM_GPUS > 1 else None
+    # TODO: fix compatibility for multi-GPU
+    # sampler = DistributedSampler(dataset) if cfg.NUM_GPUS > 1 else None
+    batch_sampler = None
+    if sequential:
+        batch_sampler = SequentialBatchSampler(dataset, batch_size)
     # Create a loader
     loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=(False if sampler else shuffle),
-        sampler=sampler,
+        # shuffle=(False if sampler else shuffle),
+        shuffle=shuffle,
+        batch_sampler=batch_sampler,
         num_workers=num_workers,
         pin_memory=cfg.DATA_LOADER.PIN_MEMORY,
         drop_last=drop_last,

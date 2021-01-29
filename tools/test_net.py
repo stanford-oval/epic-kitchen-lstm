@@ -5,21 +5,24 @@
 
 import os
 import pickle
+import random
+
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 import slowfast.utils.checkpoint as cu
 import slowfast.utils.distributed as du
 import slowfast.utils.logging as logging
 import slowfast.utils.misc as misc
-from slowfast.datasets import loader
+from slowfast.datasets import loader, Epickitchens
 from slowfast.models import build_model
 from slowfast.utils.meters import AVAMeter, TestMeter, EPICTestMeter
 
 logger = logging.get_logger(__name__)
 
 
-def perform_test(test_loader, model, test_meter, cfg):
+def perform_test(test_loader: DataLoader, model, test_meter, cfg):
     """
     For classification:
     Perform mutli-view testing that uniformly samples N clips from a video along
@@ -42,7 +45,26 @@ def perform_test(test_loader, model, test_meter, cfg):
 
     test_meter.iter_tic()
 
-    for cur_iter, (inputs_img, inputs_label, labels, video_idx, meta) in enumerate(test_loader):
+    for cur_iter, (inputs_img, inputs_index, labels, video_idx, meta) in enumerate(test_loader):
+
+        # construct input_label from input_index
+        history_label_verb = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[0], ))
+        history_label_noun = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[1], ))
+        for i in range(inputs_index.shape[0]):
+            for j, index in inputs_index[i]:
+                if index != -1:
+                    # noinspection PyTypeChecker
+                    dataset: Epickitchens = test_loader.dataset
+                    # noinspection PyProtectedMember
+                    cur_record = dataset._video_records[index]
+                    if random.random() > dataset.sample_rate:
+                        history_label_verb[i, j, cur_record.label['verb']] = 1
+                        history_label_noun[i, j, cur_record.label['noun']] = 1
+                    else:
+                        history_label_verb[i, j, cur_record.temp_label['verb']] = 1
+                        history_label_noun[i, j, cur_record.temp_label['noun']] = 1
+        inputs_label = torch.cat((history_label_noun, history_label_verb), dim=2)
+
         # Transfer the data to the current GPU device.
         if isinstance(inputs_img, (list,)):
             for i in range(len(inputs_img)):

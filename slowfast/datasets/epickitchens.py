@@ -1,18 +1,15 @@
-import os
-import random
-
 import functools
+import os
+
 import pandas as pd
 import torch
 import torch.utils.data
 
 import slowfast.utils.logging as logging
-
-from .build import DATASET_REGISTRY
-from .epickitchens_record import EpicKitchensVideoRecord
-
 from . import transform as transform
 from . import utils as utils
+from .build import DATASET_REGISTRY
+from .epickitchens_record import EpicKitchensVideoRecord
 from .frame_loader import pack_frames_to_video_clip
 
 logger = logging.get_logger(__name__)
@@ -169,21 +166,16 @@ class Epickitchens(torch.utils.data.Dataset):
 
         current_record = self._video_records[index]
         SEQ_LEN = 100
-        history_label_verb = torch.zeros((SEQ_LEN, self.cfg.MODEL.NUM_CLASSES[0]))
-        history_label_noun = torch.zeros((SEQ_LEN, self.cfg.MODEL.NUM_CLASSES[1]))
+        history_index = torch.LongTensor(SEQ_LEN)
         for i, back_index in enumerate(range(-SEQ_LEN, 0)):
             cur_index = index + back_index * self._num_clips
             cur_record = self._video_records[cur_index]
             if cur_record.untrimmed_video_name == current_record.untrimmed_video_name:
-                if random.random() > self.sample_rate:
-                    history_label_verb[i, cur_record.label['verb']] = 1
-                    history_label_noun[i, cur_record.label['noun']] = 1
-                else:
-                    history_label_verb[i, cur_record.temp_label['verb']] = 1
-                    history_label_noun[i, cur_record.temp_label['noun']] = 1
-        history_label = torch.cat((history_label_noun, history_label_verb), dim=1)
+                history_index[i] = cur_index
+            else:
+                history_index[i] = -1
 
-        return frames, history_label, label, index, metadata
+        return frames, history_index, label, index, metadata
 
     def set_temp_labels(self, idx, verb, noun):
         self._video_records[idx].set_temp_label(verb, noun)
