@@ -4,6 +4,7 @@
 """Train a video classification model."""
 import datetime
 import os
+import random
 
 import numpy as np
 from scipy.stats import gmean
@@ -19,7 +20,7 @@ import slowfast.utils.distributed as du
 import slowfast.utils.logging as logging
 import slowfast.utils.metrics as metrics
 import slowfast.utils.misc as misc
-from slowfast.datasets import loader
+from slowfast.datasets import loader, Epickitchens
 from slowfast.models import build_model, SlowFast
 from slowfast.models.action_predictor import ActionPredictor
 from slowfast.utils.meters import AVAMeter, TrainMeter, ValMeter, EPICTrainMeter, EPICValMeter, TestMeter, EPICTestMeter
@@ -56,9 +57,28 @@ def train_epoch(train_loader, model, optimizer, train_meter, cur_epoch, cfg):
     else:
         data_size = len(train_loader) // 10
 
-    for cur_iter, (inputs_img, inputs_label, labels, _, meta) in enumerate(train_loader):
+    for cur_iter, (inputs_img, inputs_index, labels, _, meta) in enumerate(train_loader):
         if cur_iter == data_size:
             break
+
+        # construct input_label from input_index
+        history_label_verb = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[0],))
+        history_label_noun = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[1],))
+        for i in range(inputs_index.shape[0]):
+            for j, index in enumerate(inputs_index[i]):
+                if index != -1:
+                    # noinspection PyTypeChecker
+                    dataset: Epickitchens = train_loader.dataset
+                    # noinspection PyProtectedMember
+                    cur_record = dataset._video_records[index]
+                    if random.random() > dataset.sample_rate:
+                        history_label_verb[i, j, cur_record.label['verb']] = 1
+                        history_label_noun[i, j, cur_record.label['noun']] = 1
+                    else:
+                        history_label_verb[i, j, cur_record.temp_label['verb']] = 1
+                        history_label_noun[i, j, cur_record.temp_label['noun']] = 1
+        inputs_label = torch.cat((history_label_noun, history_label_verb), dim=2)
+
         # Transfer the data to the current GPU device.
         if isinstance(inputs_img, (list,)):
             for i in range(len(inputs_img)):
@@ -235,7 +255,26 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg):
     model.eval()
     val_meter.iter_tic()
 
-    for cur_iter, (inputs_img, inputs_label, labels, _, meta) in enumerate(val_loader):
+    for cur_iter, (inputs_img, inputs_index, labels, _, meta) in enumerate(val_loader):
+
+        # construct input_label from input_index
+        history_label_verb = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[0],))
+        history_label_noun = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[1],))
+        for i in range(inputs_index.shape[0]):
+            for j, index in enumerate(inputs_index[i]):
+                if index != -1:
+                    # noinspection PyTypeChecker
+                    dataset: Epickitchens = val_loader.dataset
+                    # noinspection PyProtectedMember
+                    cur_record = dataset._video_records[index]
+                    if random.random() > dataset.sample_rate:
+                        history_label_verb[i, j, cur_record.label['verb']] = 1
+                        history_label_noun[i, j, cur_record.label['noun']] = 1
+                    else:
+                        history_label_verb[i, j, cur_record.temp_label['verb']] = 1
+                        history_label_noun[i, j, cur_record.temp_label['noun']] = 1
+        inputs_label = torch.cat((history_label_noun, history_label_verb), dim=2)
+
         # Transferthe data to the current GPU device.
         if isinstance(inputs_img, (list,)):
             for i in range(len(inputs_img)):
@@ -496,7 +535,7 @@ def train(cfg):
                     cfg.MODEL.NUM_CLASSES,
                     len(train_in_order_loader),
                 )
-            perform_test(train_in_order_loader, model, test_meter, cfg)
+            # perform_test(train_in_order_loader, model, test_meter, cfg)
             train_loader.dataset.sample_rate = 1
             train_loader = loader.construct_loader(cfg, "train", train_loader.dataset)
         else:
