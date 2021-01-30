@@ -69,7 +69,7 @@ def construct_loader(cfg, split, dataset=None):
         sequential = False
     elif split in ["train-in-order"]:
         dataset_name = cfg.TRAIN.DATASET
-        batch_size = int(cfg.TEST.BATCH_SIZE / cfg.NUM_GPUS)
+        batch_size = int(cfg.TRAIN.BATCH_SIZE / cfg.NUM_GPUS)
         shuffle = False
         drop_last = False
         num_workers = cfg.DATA_LOADER.TEST_NUM_WORKERS
