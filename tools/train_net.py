@@ -535,7 +535,7 @@ def train(cfg):
                     cfg.MODEL.NUM_CLASSES,
                     len(train_in_order_loader),
                 )
-            # perform_test(train_in_order_loader, model, test_meter, cfg)
+            perform_test(train_in_order_loader, model, test_meter, cfg)
             train_loader.dataset.sample_rate = 1
             train_loader = loader.construct_loader(cfg, "train", train_loader.dataset)
         else:
