@@ -387,7 +387,7 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg):
     return is_best_epoch
 
 
-def calculate_and_update_precise_bn(loader, model, num_iters=200):
+def calculate_and_update_precise_bn(loader, model, cfg, num_iters=200):
     """
     Update the stats in bn layers by calculate the precise stats.
     Args:
@@ -397,12 +397,31 @@ def calculate_and_update_precise_bn(loader, model, num_iters=200):
     """
 
     def _gen_loader():
-        for inputs_img, inputs_label, _, _, _ in loader:
+        for inputs_img, inputs_index, _, _, _ in loader:
             if isinstance(inputs_img, (list,)):
                 for i in range(len(inputs_img)):
                     inputs_img[i] = inputs_img[i].cuda(non_blocking=True)
             else:
                 inputs_img = inputs_img.cuda(non_blocking=True)
+
+            # construct input_label from input_index
+            history_label_verb = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[0],))
+            history_label_noun = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[1],))
+            for i in range(inputs_index.shape[0]):
+                for j, index in enumerate(inputs_index[i]):
+                    if index != -1:
+                        # noinspection PyTypeChecker
+                        dataset: Epickitchens = loader.dataset
+                        # noinspection PyProtectedMember
+                        cur_record = dataset._video_records[index]
+                        if random.random() > dataset.sample_rate:
+                            history_label_verb[i, j, cur_record.label['verb']] = 1
+                            history_label_noun[i, j, cur_record.label['noun']] = 1
+                        else:
+                            history_label_verb[i, j, cur_record.temp_label['verb']] = 1
+                            history_label_noun[i, j, cur_record.temp_label['noun']] = 1
+            inputs_label = torch.cat((history_label_noun, history_label_verb), dim=2)
+
             inputs_label = inputs_label.cuda()
             yield [inputs_img, inputs_label]
 
@@ -494,6 +513,8 @@ def train(cfg):
         train_loader = loader.construct_loader(cfg, "train+val")
         val_loader = loader.construct_loader(cfg, "val")
 
+    val_loader.dataset.sample_rate = 1
+
     if cfg.EPICKITCHENS.TB_DIR == "":
         current_datetime = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         writer_dir = os.path.join("./runs/", current_datetime)
@@ -551,7 +572,7 @@ def train(cfg):
         # Compute precise BN stats.
         if cfg.BN.USE_PRECISE_STATS and len(get_bn_modules(model)) > 0:
             calculate_and_update_precise_bn(
-                train_loader, model, cfg.BN.NUM_BATCHES_PRECISE
+                train_loader, model, cfg, cfg.BN.NUM_BATCHES_PRECISE
             )
 
         # Save a checkpoint.
