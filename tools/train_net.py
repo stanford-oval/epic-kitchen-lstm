@@ -255,7 +255,7 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg):
     model.eval()
     val_meter.iter_tic()
 
-    for cur_iter, (inputs_img, inputs_index, labels, _, meta) in enumerate(val_loader):
+    for cur_iter, (inputs_img, inputs_index, labels, video_idx, meta) in enumerate(val_loader):
 
         # construct input_label from input_index
         history_label_verb = torch.zeros(inputs_index.shape + (cfg.MODEL.NUM_CLASSES[0],))
@@ -354,6 +354,12 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg):
                     (verb_top5_acc, noun_top5_acc, action_top5_acc),
                     inputs_img[0].size(0) * cfg.NUM_GPUS
                 )
+                verb_preds = preds[0]
+                noun_preds = preds[1]
+                for result_idx, video_id in enumerate(video_idx.detach().cpu()):
+                    verb_result = torch.argmax(verb_preds[result_idx]).item()
+                    noun_result = torch.argmax(noun_preds[result_idx]).item()
+                    val_loader.dataset.set_temp_labels(video_id, verb_result, noun_result)
             else:
                 # Compute the errors.
                 num_topks_correct = metrics.topks_correct(preds, labels, (1, 5))
