@@ -25,7 +25,7 @@ class SequentialBatchSampler(Sampler[Sequence[int]]):
 
         cur_list = [(v_id, 0) for v_id in range(start_num)]
 
-        next_v_id = start_num + 1
+        next_v_id = start_num
 
         sequence = []
 
@@ -45,6 +45,9 @@ class SequentialBatchSampler(Sampler[Sequence[int]]):
                 else:
                     new_list += [(v_id, sub_idx + 1)]
             cur_list = new_list
+
+        # noinspection PyProtectedMember
+        assert len([item for sub_seq in sequence for item in sub_seq]) == len(dataset._video_records)
 
         self.sequence = sequence
 
