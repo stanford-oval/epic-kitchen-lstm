@@ -545,8 +545,11 @@ def train(cfg):
             print("Update meter epoch_iter")
             train_meter.update_epoch_iters(len(train_loader))
         if cur_epoch >= cfg.SOLVER.FREEZE_EPOCH:
-            train_loader.dataset.sample_rate = \
-                (cur_epoch - cfg.SOLVER.FREEZE_EPOCH + 1) / (cfg.SOLVER.MAX_EPOCH - cfg.SOLVER.FREEZE_EPOCH)
+            if cur_epoch >= cfg.SOLVER.FULL_SAMPLE_EPOCH:
+                train_loader.dataset.sample_rate = 1
+            else:
+                train_loader.dataset.sample_rate = \
+                    (cur_epoch - cfg.SOLVER.FREEZE_EPOCH + 1) / (cfg.SOLVER.FULL_SAMPLE_EPOCH - cfg.SOLVER.FREEZE_EPOCH)
             train_in_order_loader = loader.construct_loader(cfg, "train-in-order", train_loader.dataset)
             if cfg.TEST.DATASET == 'epickitchens':
                 test_meter = EPICTestMeter(
