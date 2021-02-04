@@ -46,7 +46,7 @@ class ActionPredictorNoPred(pytorch_lightning.core.LightningModule):
         self.network = SimpleLSTM(
             cfg.MODEL.LSTM_TYPE,
             cfg.MODEL.NUM_CLASSES[0] + cfg.MODEL.NUM_CLASSES[1],
-            output_dim,
+            cfg.MODEL.NUM_CLASSES[0] + cfg.MODEL.NUM_CLASSES[1],
             20,
             0.1,
             cfg.MODEL.LSTM_LAYER_NUM)
